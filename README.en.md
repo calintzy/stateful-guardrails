@@ -120,38 +120,22 @@ The accumulation formula is `S_t = clip(λ·S_{t-1} + signal_t, 0, S_max)` — i
 
 ## Quick Start
 
-First clone the repository, create a virtual environment, and install the dev dependencies.
+This repository is best handed to an AI coding agent (Claude Code, Codex, Cursor, etc.) — it will clone, install, run, and report back on its own. Just paste the instruction below.
+
+> Clone this repo and install it into a Python 3.12 virtualenv with `pip install -e ".[dev]"`. Pull `bge-m3` and `qwen2.5:14b` via Ollama and start `ollama serve`, then run `sgr escalate -s c1-test-001` to show the cumulative crisis-escalation demo, and `sgr eval --mini --dataset data/` to reproduce the measurements and compare against the bundled `out/mini.md`.
+
+To run it yourself, or as a command reference (all local, zero external API calls):
 
 ```bash
-git clone <repo-url> stateful-guardrails
-cd stateful-guardrails
-python3.12 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-```
+pip install -e ".[dev]"              # install (Python 3.12)
+ollama pull bge-m3                   # embeddings — always needed
+ollama pull qwen2.5:14b              # judge — eval only
 
-Evaluation needs Ollama and two models. The judge LLM (`qwen2.5:14b`) is only used during eval.
-
-```bash
-# Install from https://ollama.com, then:
-ollama serve
-ollama pull bge-m3        # embeddings (1.2 GB)
-ollama pull qwen2.5:14b   # judge LLM (9 GB) — needed for eval only
-```
-
-The core commands are below; `sgr eval --mini` is the project's make-or-break check.
-
-```bash
-sgr --version                                          # version check (ISC-0.1)
-sgr catalog                                            # policy catalog (category, stateless|stateful)
-sgr scan --input data/c1.test.jsonl                    # single-pass scan (stateless mode)
-sgr eval --mini --dataset data/ --report out/mini.md  # mini eval — make-or-break check
-```
-
-To reproduce the measurements, run the evaluation on the bundled synthetic data with the frozen parameters, then compare the output against the bundled `out/mini.md`. The λ-sweep reproduces the same way (ISC-5.6).
-
-```bash
-sgr eval --mini --dataset data/ --report out/mini.md
-sgr eval --mini --lambda-sweep 0.5,0.7,0.9,1.0 --report out/lambda.md --dataset data/
+sgr escalate -s c1-test-001          # ★ cumulative crisis tracking + 3-stage handoff demo
+sgr audit    -s c1-test-001          # audit trail for the decision above
+sgr eval --mini --dataset data/      # ★ make-or-break check: cumulative vs baselines (stats)
+sgr eval --mini --lambda-sweep 0.5,0.7,0.9,1.0 --dataset data/ --report out/lambda.md
+sgr catalog                          # policy catalog  ·  sgr cost-model  cost table
 ```
 
 ## Data

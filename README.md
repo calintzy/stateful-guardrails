@@ -120,38 +120,22 @@ core/         순수 도메인: Policy 인터페이스, SessionState, 누적 판
 
 ## 빠른 시작
 
-먼저 저장소를 받아 가상환경을 만들고 개발 의존성을 설치합니다.
+이 저장소는 AI 코딩 에이전트(Claude Code·Codex·Cursor 등)에게 맡기는 것을 권장합니다 — 클론·설치·실행·결과 확인까지 알아서 처리합니다. 아래 지시를 그대로 붙여넣으세요.
+
+> 이 저장소를 클론해서 Python 3.12 가상환경에 `pip install -e ".[dev]"`로 설치해줘. Ollama로 `bge-m3`와 `qwen2.5:14b`를 받아 `ollama serve`를 띄운 뒤, `sgr escalate -s c1-test-001`로 누적 위기 이관 데모를 보여주고, `sgr eval --mini --dataset data/`로 측정을 재현해 동봉된 `out/mini.md`와 비교해줘.
+
+직접 실행하거나 명령을 참고할 때 (전부 로컬, 외부 API 호출 0):
 
 ```bash
-git clone <repo-url> stateful-guardrails
-cd stateful-guardrails
-python3.12 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-```
+pip install -e ".[dev]"              # 설치 (Python 3.12)
+ollama pull bge-m3                   # 임베딩 — 항상 필요
+ollama pull qwen2.5:14b              # judge — eval 시에만
 
-평가에는 Ollama와 모델 두 개가 필요합니다. 판정기 LLM(`qwen2.5:14b`)은 eval 단계에서만 쓰입니다.
-
-```bash
-# https://ollama.com 설치 후
-ollama serve
-ollama pull bge-m3        # 임베딩 (1.2 GB)
-ollama pull qwen2.5:14b   # judge LLM (9 GB) — eval 시에만 필요
-```
-
-기본 명령은 다음과 같습니다. `sgr eval --mini`가 이 프로젝트의 사활이 걸린 핵심 검증입니다.
-
-```bash
-sgr --version                                          # 버전 확인 (ISC-0.1)
-sgr catalog                                            # 정책 카탈로그 (category, stateless|stateful)
-sgr scan --input data/c1.test.jsonl                    # 단발 스캔 (stateless 모드)
-sgr eval --mini --dataset data/ --report out/mini.md  # 미니 평가 — 핵심 검증
-```
-
-측정을 재현하려면 동봉한 합성 데이터와 고정 파라미터로 평가를 돌린 뒤, 결과를 동봉된 `out/mini.md`와 비교하면 됩니다. λ-sweep도 같은 방식으로 재현됩니다(ISC-5.6).
-
-```bash
-sgr eval --mini --dataset data/ --report out/mini.md
-sgr eval --mini --lambda-sweep 0.5,0.7,0.9,1.0 --report out/lambda.md --dataset data/
+sgr escalate -s c1-test-001          # ★ 누적 위기 추적 + 3단계 이관 데모
+sgr audit    -s c1-test-001          # 위 판정의 감사 추적
+sgr eval --mini --dataset data/      # ★ 핵심 검증: 누적 vs 비교군 (통계)
+sgr eval --mini --lambda-sweep 0.5,0.7,0.9,1.0 --dataset data/ --report out/lambda.md
+sgr catalog                          # 정책 목록  ·  sgr cost-model  비용 비교표
 ```
 
 ## 데이터
