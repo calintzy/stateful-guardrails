@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.sqlite
+*.db
+.DS_Store
+
+# out/ 디렉토리 내용은 비공개, 단 측정·운영가치 리포트는 재현용 공개
+out/*
+!out/mini.md
+!out/cost.md

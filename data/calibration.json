@@ -1,0 +1,14 @@
+{
+  "threshold_t1": 0.7,
+  "threshold_t2": 0.9,
+  "lambda_decay": 0.7,
+  "window_size_k": 5,
+  "state_window_n": 10,
+  "s_max": 1.0,
+  "fpr_budget": 0.05,
+  "fpr_achieved": 0.0,
+  "n_sessions": 15,
+  "calibration_split": "data/c3.calib.jsonl",
+  "test_split_note": "test-split(data/c3.test.jsonl) 미사용 — test-split은 Phase 2+ 평가에서만 사용 (ISC-2.6 split 동결).",
+  "note": "동결 파라미터 — test-split 평가 시 재튜닝 금지 (ISC-2.6)"
+}
