@@ -7,23 +7,25 @@
 
 [한국어](README.md) · English
 
-In conversational AI, any single message is a minor complaint, but once those complaints stack up across turns they turn into a crisis — churn, or an enraged customer. This repository holds two things: a crisis early-warning component that tracks that accumulation, and a measurement of whether the component actually works. The component is a cumulative risk score engine (`S_t = λ·S_{t-1} + signal_t`), three-stage escalation routing, and an O(N) structure whose per-turn cost stays flat no matter how long a session runs; you can run it immediately with `sgr escalate`. The measurement asks whether that component catches a crisis earlier than a sliding-window approach, testing it against strong baselines with a McNemar test, bootstrap confidence intervals, and a λ-sweep. The short version: in one detector the advantage clearly holds, in the other it does not, and the advantage carries a false-positive cost. The rest is written out below, as-is.
+Any single message a customer sends a chatbot is usually a minor complaint ("not working again"). But once those complaints stack up across several turns, at some point they tip into a crisis — the customer leaves, or gets seriously angry. This repository holds two things: a component that tracks that *build-up* and warns of a crisis early, and a measurement of whether that component actually works.
+
+Here is the core idea as an analogy. An ordinary safety check is like a *checkpoint that sees every passerby for the first time*: it looks at the one message in front of it and decides to pass it or block it (this single-shot approach is called stateless). What this project builds is closer to a *security guard who remembers a regular's behavior*: it watches how the conversation has unfolded, accumulating it, and catches a crisis signal once even mild complaints pile up (this cumulative approach is called stateful). The component is a score engine that adds a little to a crisis score on every turn (`S_t = λ·S_{t-1} + signal_t`), a three-stage handoff that routes bot → human agent → manager by score, and an O(N) structure whose per-turn cost stays flat no matter how long the conversation runs — and you can run it immediately with `sgr escalate`. The measurement asks whether this cumulative approach catches a crisis earlier than the single-shot approach, not by eyeballing but with statistical tests (a McNemar test, bootstrap confidence intervals, and a λ-sweep) against strong comparison baselines. The short version: in one detector the advantage clearly held, in the other it did not, and catching crises better came at the cost of more often mistaking a fine conversation for a crisis. We did not cherry-pick the good results — the parts that did not work are written out below as-is too.
 
 ## Background / Motivation
 
-As AI agents move into production, the gradual manipulation that per-turn guardrails wave through has become a real threat: individual messages look harmless, but accumulated over many turns they push the AI past its boundaries or steer it somewhere dangerous. The Meta customer-support chatbot incident of June 2026 is one such case. What matters is not whether the incident was single-turn or multi-turn, but that the structure itself — "individually harmless, cumulatively a crisis" — sits in the blind spot of any guardrail that looks at each turn in isolation.
+As AI agents move into production, a new kind of threat has surfaced. Each individual message looks harmless, but by nudging a little at a time across many turns, an attacker can get the AI to do something it should not (gradual manipulation). The Meta customer-support chatbot incident of June 2026 is one such case. What matters is not whether that incident happened in a single turn, but that the structure itself — "harmless one by one, a crisis once accumulated" — sits in the blind spot of any safety check that looks at each message in isolation.
 
-What we attempted is not to block this cumulative threat but to notice it early. The goal was to measure, in a falsifiable way, whether a stateful approach that accumulates the entire conversation history catches anomalies sooner than stateless approaches that see only the current turn or the last few.
+The goal of this project is not to *block* this cumulative threat but to *notice it early*. We set out to measure, in a way that exposes itself if wrong, whether an approach that accumulates the entire conversation (cumulative / stateful) catches warning signs sooner than approaches that see only the current message or the last few (single-shot / stateless).
 
-Generating jailbreak or manipulation data directly conflicts with safety policy. So we chose a structurally equivalent but safe proxy domain: customer-support crisis escalation. An individual complaint is harmless on its own but signals a crisis once it accumulates — isomorphic to cumulative manipulation — and the measurement scaffold (signal design, baseline comparison, McNemar, operating-point alignment, confidence intervals) is domain-agnostic, leaving the theoretical transfer to manipulation detection open. It was a deliberate call to recognize the safety-policy conflict in advance and route around it.
+Generating manipulation or jailbreak data directly conflicts with safety policy. So we picked a structurally identical but safe substitute topic: customer-support crisis escalation. An individual complaint is harmless on its own but signals a crisis once it accumulates — the same structure as cumulative manipulation — and the methods we used to measure it (signal design, choice of baselines, statistical tests, operating-point alignment, confidence intervals) do not depend on the topic, leaving room to carry the work over to manipulation detection later. It was a deliberate call: we recognized the conflict with safety policy in advance and routed around it.
 
-## What Detection Enables — Operational Value
+## From Detection to Response — Operational Value
 
-Detection is worth something only when it leads to an action, not as an end in itself. The demo and cost comparison below show what the component enables, and the measurement section that follows verifies that effect numerically. Note up front that the demo uses a synthetic session and the costs are model estimates.
+Detecting a crisis is not the point in itself; it earns its keep only when it leads to an actual *response*. The demo and cost comparison below show where this component can be used, and the measurement section that follows verifies the effect numerically. Note up front that the demo is a synthetic (made-up) conversation and the costs are estimates.
 
 ### Three-stage escalation
 
-The cumulative crisis score `S_t` maps to frozen thresholds `t1=0.7` and `t2=0.9`, with no re-tuning. When `S_t` is below `t1` the bot replies automatically; between `t1` and `t2` the conversation goes to a human agent; at or above `t2` it goes to a manager on the retention team.
+The cumulative crisis score `S_t` is read against two pre-frozen thresholds, `t1=0.7` and `t2=0.9`, to choose the handling path automatically (no re-tuning). When `S_t` is below `t1` the bot replies automatically; between `t1` and `t2` it goes to a human agent; at or above `t2` it goes to a manager on the retention team.
 
 ```
 $ sgr escalate --session c1-test-004
@@ -41,13 +43,13 @@ $ sgr escalate --session c1-test-004
     (accumulated weak complaints trigger human intervention *before* the explicit crisis declaration)
 ```
 
-Stateless single-turn (B1) treats each turn independently and so cannot decide *when* to hand off on a cumulative basis. Turn 2's "Frustrating" carries a single-turn risk of 0.55, below `t1`, so it stays a bot reply — but the cumulative `S_t=0.84` crosses the agent-handoff threshold, and the conversation reaches a human one turn before the customer says "cancel." Early detection is precisely the action it enables. Every decision is auditable via `sgr audit --session <id>` (ISC-4.2).
+The single-shot approach (B1) looks at each turn on its own, so it cannot decide *when* to hand off on a cumulative basis. Turn 2's "Frustrating," read in isolation, carries a crisis score of 0.55 — below `t1` — so it stays a bot reply; but the accumulated score so far, `S_t=0.84`, crosses the agent-handoff threshold. As a result, the conversation reaches a human one turn before the customer ever says "cancel." This is exactly where an early signal turns straight into a response. Every decision can be traced afterward via `sgr audit --session <id>` (ISC-4.2).
 
-Not every C1 session shows this lead, though. When weak complaints arrive sparsely, one turn at a time, the λ=0.7 decay disperses the accumulation, and in some sessions the handoff timing matches the single-turn baseline. Those cases are reported as-is too.
+That said, not every crisis conversation shows this lead. When weak complaints arrive sparsely, one turn at a time, the score cools off gradually at λ=0.7, the accumulation disperses, and in some conversations the handoff timing matches the single-shot baseline. Those cases are reported as-is too.
 
-### Economics
+### Economics (cost)
 
-STATEFUL references only one scalar (`S_{t-1}`) per turn, so its per-turn cost is fixed. B1.5 re-feeds the last K=5 turns and B2 re-feeds the entire session to the judge every turn. Comparing the cumulative judge input tokens over an N-turn session makes the difference plain.
+The cumulative approach (STATEFUL) only has to carry one number per turn (`S_{t-1}`), so its per-turn cost does not grow as the conversation lengthens. B1.5 re-feeds the last 5 turns (K=5) and B2 re-feeds the entire conversation to the judge every turn. Comparing the cumulative tokens (the processing load) that go into the judge over an N-turn conversation makes the difference plain.
 
 | N (turns) | STATEFUL O(N) | B1.5 O(N·K) | B2 O(N²) | B1.5/ST | B2/ST |
 |---|---|---|---|---|---|
@@ -56,48 +58,52 @@ STATEFUL references only one scalar (`S_{t-1}`) per turn, so its per-turn cost i
 | 50 | 1,050 | 4,560 | 24,225 | ×4.3 | ×23.1 |
 | 100 | 2,100 | 9,310 | 95,950 | ×4.4 | ×45.7 |
 
-The ratio against B2 grows monotonically with N (O(N²) vs O(N)), which means that for long sessions and online operation full re-submission (B2) is effectively cost-prohibitive and B1.5 still costs K times as much. This number backs the justification the measurement conclusion leans on: "B2-level accuracy at 1/N of B2's cost." The table is a model estimate, not a measurement: per-turn tokens are taken as roughly 19 (the bundled data's Korean user messages average about 28 characters), and judge pricing is an assumption. Local Ollama's actual monetary cost is 0; the table only shows the relative scale you would see if you moved to a cloud judge. Reproduce it with `sgr cost-model`; details are in [`out/cost.md`](out/cost.md).
+How to read the table: the two rightmost columns are how many times more expensive each method is versus the cumulative approach. The longer the conversation (the larger N), the wider the gap — B2 goes from ×5.0 to ×45.7 against cumulative. In other words, for long conversations or live operation, re-feeding the whole thing every turn (B2) is effectively cost-prohibitive, and re-feeding just the last few turns (B1.5) still costs K times as much. This number backs the justification the measurement conclusion leans on: "B2-level accuracy at 1/N of B2's cost." But this table is an estimate, not a real measurement: each turn is taken as roughly 19 tokens (the bundled data's Korean messages average about 28 characters), and judge pricing is an assumption. Run it on local Ollama and the actual money cost is zero; the table only shows the relative scale you would see if you moved to a cloud judge. Reproduce it with `sgr cost-model`; details are in [`out/cost.md`](out/cost.md).
 
 ## Measurement Results
 
-Now the effect itself. The source is [`out/mini.md`](out/mini.md), comparing the C1 (cumulative crisis) positive test pool of 62 sessions (c1.test 47 + c1.calib 15 merged) against the C3 (normal resolution) test set of 40 sessions (22 long-positive), at K=5.
+Now the effect itself. The source numbers are in [`out/mini.md`](out/mini.md). The comparison takes 62 conversations where a crisis actually occurred (C1 positive test: c1.test 47 + 15 merged from c1.calib) and 40 conversations that resolved normally (C3 test, 22 of which are a "long-but-normal" control), set against the approach that looks at the last 5 turns (K=5).
 
-To lead with the core finding: in the `target_aware` detector, STATEFUL clearly beat sliding-window (B1.5).
+First, two terms unpacked. **Recall** is the rate of "how many real crises were caught without missing them," and **false-positive rate (FPR)** is the rate of "mistaking a fine conversation for a crisis." A good crisis detector has to do both at once — catch many crises, but not wrongly flag the fine ones.
+
+To lead with the core finding: in one detector called `target_aware`, the cumulative approach (STATEFUL) clearly beat the single-shot approach that looks at the last 5 turns (B1.5).
 
 | Comparison | Δrecall (all) | Δrecall (K+) | ΔTTD (all) | McNemar p |
 |---|---|---|---|---|
 | STATEFUL − B1 (per-turn) | +19.4%p | +29.6%p | −0.02 | 0.004 |
 | STATEFUL − B1.5 (sliding-window) | +53.2%p | +63.0%p | +0.30 | 0.000 |
 
-TTD here is success_turn minus detect_turn, so a positive value means STATEFUL detected on an earlier turn. The bootstrap 95% confidence interval for Δrecall against B1.5 is [+40.3%p, +66.1%p], whose lower bound clears 0, so the sign is certain.
+How to read the table: each number is the difference in "how much better the cumulative approach was than the single-shot one" (%p, percentage points), and positive means cumulative is better. The rightmost McNemar p is "the probability this difference is chance," and the smaller it is (typically below 0.05), the stronger the evidence that it is not chance. ΔTTD is "how many turns earlier the cumulative approach caught it than the single-shot one," and positive means earlier (success_turn − detect_turn). And when we re-compute the recall difference against the single-shot approach (B1.5) 2,000 times over reshuffled samples (a bootstrap confidence interval), the whole range comes out as [+40.3%p, +66.1%p] — all above 0, meaning the direction of the difference does not flip by chance.
 
-We also checked separately that this advantage is not an artifact of mismatched operating points. Re-measuring recall after aligning thresholds to the same test-FPR budget, STATEFUL still leads B1.5 consistently — by +19.4%p at ≤5%, +22.6%p at ≤10%, and +38.7%p at ≤20%. Sweeping λ across 0.5, 0.7, 0.9, and 1.0, the delta against B1.5 stays between +32%p and +53%p without ever flipping sign. That closes the "you bought the advantage with FPR" and "small-sample noise" objections across three layers: operating-point alignment, the confidence interval, and the full λ range.
+We also checked separately that this advantage is not an illusion from "setting the bar too loose." When we align both sides to the same rate of wrongly flagging fine conversations (FPR) and re-measure recall, cumulative still leads single-shot consistently — by +19.4%p at FPR ≤5%, +22.6%p at ≤10%, and +38.7%p at ≤20%. And sweeping the key setting (λ) across 0.5, 0.7, 0.9, and 1.0 to see whether the conclusion wobbles (the λ-sweep), the difference against single-shot (B1.5) stays between +32%p and +53%p and never once flips sign. That closes the "you bought the advantage by allowing false positives" and "it's just small-sample chance" objections across three layers: operating-point alignment, the confidence interval, and the full λ range.
 
-The recall advantage is not free, though. On the length-controlled long-positive sessions, STATEFUL's false-positive rate is 18% (4/22), higher than B1.5's 9% (2/22) — the price of not fully separating "a crisis because the session is long" from "a crisis because it escalates."
+That recall advantage was not free, though. On the "long-but-normal" long conversations, the cumulative approach mistook a fine conversation for a crisis 18% of the time (4 of 22), higher than the single-shot approach's (B1.5) 9% (2 of 22). That is the price of not fully separating "the score went up because the conversation is long" from "the score went up because it really is a crisis."
 
-In the other detector, `target_agnostic`, the advantage did not hold. STATEFUL came in at +0.0%p versus B1 (p=1.000) and −4.8%p versus B1.5 (p=0.250), with a confidence interval of [−11.3%p, +0.0%p] that includes 0. Bear in mind that McNemar depends only on discordant pairs, so power is low when the sample is small. Significance is strong evidence, but non-significance is not disproof.
+In the other detector, `target_agnostic`, the advantage did not hold. Cumulative came in at +0.0%p versus single-shot B1 (p=1.000) and −4.8%p versus single-shot B1.5 (p=0.250), with a confidence interval of [−11.3%p, +0.0%p] that includes 0 (meaning there may be no difference). Bear in mind, though, that the McNemar test only counts the cases where the two approaches disagree, so when the sample is small it has weak power to tell a real effect from chance. "Significant" is strong evidence, but "not significant" is not proof that there is no effect.
 
-This asymmetry actually reads as the design working as intended. `target_agnostic` looks only at the semantic drift relative to the previous N turns, and that quantity rises similarly in crisis and normal sessions alike, giving it weak discriminative power as a crisis signal. That only the cumulative movement toward the target concept (`target_aware`) held, while target-agnostic drift did not, partially supports that the data design did not leak into the detection axis. It is not a full reversal control, however, so circularity cannot be entirely ruled out.
+This asymmetry actually reads as the design working as intended. `target_agnostic` only looks at "how much the direction of the talk shifted compared with the previous few turns." But that quantity rises similarly in crisis and normal conversations alike, so it has weak power to single out a crisis. That only the approach watching movement accumulating toward the target (the crisis) held (`target_aware`), while the one watching direction-agnostic change did not (`target_agnostic`), partially supports that the data was not stacked in favor of one particular detector. It is not a perfect reverse control, however, so we cannot entirely rule out that the result fell out of the data design by itself (circularity).
 
 ## One-line Conclusion
 
-In one detector (`target_aware`), STATEFUL robustly beat stateless across operating-point alignment, the confidence interval, and the full λ range (McNemar p=0.000). But the non-circular control, `target_agnostic`, did not hold, so self-fulfillment cannot be entirely ruled out, and the recall advantage comes with an 18% false-positive cost on long normal sessions. This inherits Mycelium's `graph_weight=0.0` spirit: the numbers go down as they are, regardless of whether they flatter the project.
+In one detector (`target_aware`), the cumulative approach (STATEFUL) robustly beat the single-shot approach (stateless) — even after matching false-positive rates, even after resampling 2,000 times, even after changing the setting (McNemar p=0.000). But the control we put in to screen for circularity, `target_agnostic`, did not hold, so circularity cannot be entirely ruled out, and catching crises better raised the rate of wrongly flagging long normal conversations to 18%. This inherits Mycelium's `graph_weight=0.0` spirit: the numbers go down as they are, whether or not they flatter the project.
 
 ## Measurement Discipline
 
-How we measured matters more than the numbers themselves, which is why we treated the measurement scaffold as falsifiable experimental design rather than just another honest negative report.
+How we measured matters more than the numbers themselves, and that is the real heart of this project. So we did not stop at "honestly reporting what didn't work" — we treated the measurement as an experimental design that exposes itself if it is wrong.
 
-The comparison sits on fair, strong baselines. Per-turn stateless (B1), sliding-window K=5 (B1.5), and STATEFUL were aligned to the same FPR budget of 5%, directly answering "isn't this just sliding-window with lossy compression?" Parameters were fixed on the calibration split alone: λ=0.7, K=5, and the thresholds `t1` and `t2` were all frozen before the test split was ever seen, with no re-tuning during measurement.
+**We set up fair comparison baselines.** There are three: the single-shot approach that looks only at each message (B1), the single-shot approach that looks at the last 5 turns (B1.5), and the cumulative approach (STATEFUL). All three were aligned to the same 5% rate of wrongly flagging fine conversations, so they could answer head-on the objection "isn't this just the same as looking at the last few turns?"
 
-Length confound was detected and controlled separately. C3 normal sessions had a median of 6 turns against C1 crisis sessions' 5, and because the accumulation formula grows with length, scores could inflate. So the "long-but-normal" long-positive control was expanded to 22 sessions to strengthen control power, and results were reported separately for the 35 within-K and 27 over-K sessions. Even the fact that B1.5 and STATEFUL are structurally near-identical within K is disclosed openly.
+**The settings were fixed in advance and never touched again.** λ=0.7, K=5, and the handoff thresholds `t1` and `t2` were all set on a separate calibration dataset before the test data was ever seen, and were not adjusted during measurement (because tuning settings while looking at the test data inflates the score).
 
-To guard against self-fulfillment, two detectors were run in parallel: cumulative cosine movement toward the target concept (`target_aware`) and semantic drift from the previous N turns (`target_agnostic`). If only one holds, that is grounds to say the data design did not bleed into the detection axis. Generation and evaluation models were also separated — data was generated with claude-opus (Anthropic) while evaluation and embedding used bge-m3 and qwen2.5:14b (Alibaba) — reducing the risk of generative style circling back into evaluation.
+**We controlled for conversation length skewing the result.** Normal conversations (C3) had a median length of 6 turns versus 5 for crisis conversations (C1). Because the cumulative approach raises its score the longer a conversation runs, it could mistakenly flag something "because it's long." So we expanded the "long-but-normal" control to 22 conversations to strengthen the check, and reported the 35 that ended within the last 5 turns separately from the 27 that ran past 5. We even disclose openly that within 5 turns, the single-shot approach (B1.5) and the cumulative approach are structurally near-identical.
 
-Establishment was decided by a test, not by the sign of a point estimate. We declare establishment only when the McNemar exact p on the decisive column (vs B1.5) is below 0.05, and we exposed the uncertainty alongside it with recall re-computed at matched operating points and a 2,000-iteration bootstrap confidence interval on a fixed seed. The λ delta curve was computed across the full 0.5, 0.7, 0.9, 1.0 range, and any sign reversal would have been published as-is. That result is in [`out/lambda.md`](out/lambda.md).
+**We checked that the result was not rigged to come out by itself.** We ran two detectors in parallel — `target_aware`, which watches movement accumulating toward the target (the crisis), and `target_agnostic`, which only watches how much the talk changed versus the previous few turns regardless of direction. If only one holds, that is grounds to say the data was not stacked in favor of one particular detector. We also separated the AI that made the data from the AI that evaluates it — data was generated with claude-opus (Anthropic) while evaluation and embedding used bge-m3 and qwen2.5:14b (Alibaba) — to reduce the risk of the generator's writing style circling back into the evaluation.
+
+**"It won" was decided by a statistical test, not by eye.** Only when "the probability this difference is chance" (the McNemar test) on the most important comparison (versus single-shot B1.5) came in below 0.05 did we declare it established, and we exposed the uncertainty alongside it with the FPR-matched re-comparison and a 2,000-iteration confidence interval on a fixed seed. We also drew the difference curve for the setting (λ) across the full 0.5, 0.7, 0.9, 1.0 range, and had any sign flipped anywhere, we would have published it as-is. That result is in [`out/lambda.md`](out/lambda.md).
 
 ## Architecture
 
-The dependency direction is `interfaces → pipeline → adapters → core`, the Clean Architecture inherited from Mycelium.
+The dependency direction is `interfaces → pipeline → adapters → core` — the outer layers (CLI, external integrations) depend on the inner ones (pure computation) and never the reverse. This is the Clean Architecture inherited from Mycelium.
 
 ```
 interfaces/   CLI (typer, sgr commands) — I/O entry point
@@ -108,7 +114,7 @@ core/         Pure domain: Policy interface, SessionState, cumulative judgment a
               (no external I/O or framework dependencies — numeric operations use stdlib math only)
 ```
 
-The accumulation formula is `S_t = clip(λ·S_{t-1} + signal_t, 0, S_max)`, an exponential decay with λ=0.7. The point worth noting is that the baselines are not separate code but modes of the same engine: `session_state=None` gives B1 (per-turn), last-K sliding gives B1.5, and referencing the accumulated state gives STATEFUL. The delta between the three paths is measured on identical data under an identical policy. The design decisions (D-1 through D-10) are in [`docs/DESIGN.md`](docs/DESIGN.md), and the execution plan plus verification ISC are in [`docs/PLAN.md`](docs/PLAN.md).
+The accumulation formula is `S_t = clip(λ·S_{t-1} + signal_t, 0, S_max)` — it weighs recent signals more heavily to build up the crisis score while gradually forgetting older ones at a rate of λ=0.7 (an EWMA, an exponentially weighted moving average). The point worth noting is that the baselines are not separate code but modes of the same engine: ignore past state and you get B1 (single-shot), slide over the last K turns and you get B1.5, reference the accumulated state and you get STATEFUL. The delta between the three paths is measured on identical data under an identical policy. The design decisions (D-1 through D-10) are in [`docs/DESIGN.md`](docs/DESIGN.md), and the execution plan plus verification criteria (ISC) are in [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Quick Start
 
@@ -130,13 +136,13 @@ ollama pull bge-m3        # embeddings (1.2 GB)
 ollama pull qwen2.5:14b   # judge LLM (9 GB) — needed for eval only
 ```
 
-The core commands are below; `sgr eval --mini` is the thesis's critical gate.
+The core commands are below; `sgr eval --mini` is the project's make-or-break check.
 
 ```bash
 sgr --version                                          # version check (ISC-0.1)
 sgr catalog                                            # policy catalog (category, stateless|stateful)
 sgr scan --input data/c1.test.jsonl                    # single-pass scan (stateless mode)
-sgr eval --mini --dataset data/ --report out/mini.md  # mini eval — thesis critical gate
+sgr eval --mini --dataset data/ --report out/mini.md  # mini eval — make-or-break check
 ```
 
 To reproduce the measurements, run the evaluation on the bundled synthetic data with the frozen parameters, then compare the output against the bundled `out/mini.md`. The λ-sweep reproduces the same way (ISC-5.6).
@@ -148,7 +154,7 @@ sgr eval --mini --lambda-sweep 0.5,0.7,0.9,1.0 --report out/lambda.md --dataset 
 
 ## Data
 
-`data/` contains only synthetic conversation sessions, with no sensitive information. `c1.{calib,test}.jsonl` holds cumulative crisis escalation sessions (synthetic, including Korean), `c3.{calib,test}.jsonl` holds normal-resolution conversations and long-positive control sessions, and `calibration.json` carries the frozen parameters (λ, K, N, S_max, thresholds, FPR budget). No real customer data is included. The synthetic data plays the same role as Mycelium's `sample_vault/` — bundled so anyone can reproduce the evaluation immediately after cloning.
+The `data/` directory contains only synthetic (made-up) conversation sessions, with no sensitive information. `c1.{calib,test}.jsonl` holds cumulative crisis escalation sessions (synthetic, including Korean), `c3.{calib,test}.jsonl` holds normal-resolution conversations and the "long-but-normal" control sessions, and `calibration.json` carries the frozen parameters (λ, K, N, S_max, thresholds, FPR budget). No real customer data is included. This synthetic data plays the same role as Mycelium's `sample_vault/` — bundled so anyone can reproduce the evaluation immediately after cloning.
 
 ## Stack
 
