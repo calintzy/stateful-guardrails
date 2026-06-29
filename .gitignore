@@ -14,3 +14,4 @@ build/
 out/*
 !out/mini.md
 !out/cost.md
+!out/lambda.md
