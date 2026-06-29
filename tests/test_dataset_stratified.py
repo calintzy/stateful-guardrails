@@ -55,11 +55,11 @@ def test_c1_over_k_ratio_disclosable():
 
 
 def test_c1_total_session_count_in_range():
-    """C1 데이터셋이 확대 범위 55~80세션(표본 확대 재측정 — eval 양성 풀 ≈60)."""
+    """C1 데이터셋이 확대 범위 100~130세션(표본 100+ 재측정 — eval 양성 풀 = calib 15 + test 100 = 115)."""
     calib = _load(_DATA / "c1.calib.jsonl")
     test = _load(_DATA / "c1.test.jsonl")
     total = len(calib) + len(test)
-    assert 55 <= total <= 80, f"C1 세션 수가 55~80 범위 밖: {total}"
+    assert 100 <= total <= 130, f"C1 세션 수가 100~130 범위 밖: {total}"
 
 
 def test_c1_schema_has_required_fields():
