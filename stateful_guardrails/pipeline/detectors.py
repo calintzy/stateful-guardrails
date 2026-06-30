@@ -40,6 +40,13 @@ class TargetAwareDriftDetector:
     정상 해결 대화는 근접도가 등락(이동 상쇄)하여 누적이 낮고, 점진 에스컬레이션은
     위기 개념을 향해 단조 상승하여 작은 이동이 누적된다. B1(per-turn max)은 큰 단발
     점프가 없으면 놓치고, STATEFUL은 누적해 잡는다.
+
+    후속 실험 기록(D-11, 미채택): 장기-양성 오탐(31%)을 줄이려 signed 변형
+    (음수부도 반영, signal = progress_t - progress_{t-1})과 calib 장기-양성 보강을
+    시도했다. dev에선 오탐이 줄고 recall 우위가 커 보였으나(낙관), 새 holdout 200세션
+    1회 검증에서 오탐은 31%→5%로 해결됐지만 핵심 우위(STATEFUL−B1.5)가 −0.9%p로
+    미재현됐다(p=1.000). '낮은 오탐'과 'recall 우위'가 트레이드오프임이 드러나, 검증된
+    기존 양수부 신호를 유지한다. 상세: docs/DESIGN.md D-11, out/holdout_final.md.
     """
 
     id: str = "target_aware"

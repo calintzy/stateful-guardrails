@@ -85,6 +85,17 @@ In the other detector, `target_agnostic`, the advantage did not hold. Cumulative
 
 This asymmetry actually reads as the design working as intended. `target_agnostic` only looks at "how much the direction of the talk shifted compared with the previous few turns." But that quantity rises similarly in crisis and normal conversations alike, so it has weak power to single out a crisis. That only the approach watching movement accumulating toward the target (the crisis) held (`target_aware`), while the one watching direction-agnostic change did not (`target_agnostic`), partially supports that the data was not stacked in favor of one particular detector. It is not a perfect reverse control, however, so we cannot entirely rule out that the result fell out of the data design by itself (circularity).
 
+## Follow-up Experiment — What a Held-out Set Taught Us
+
+The weakness surfaced above was the 31% rate of mistaking long-but-normal conversations for crises. We tried to fix it: we changed the signal (also subtracting movement *away* from the anchor, so a normal conversation's back-and-forth cancels out) and added more long-normal conversations to the data used to set the threshold. On the development data, false positives dropped and the headline number even looked better (optimism).
+
+So, to ask "is that real," we built 200 brand-new conversations that don't overlap the originals and evaluated **exactly once** (committing in advance not to touch anything after seeing the result). The outcome split in two:
+
+- **The good:** the long-normal false-positive rate fell from 31% to **5%**.
+- **The bad:** in exchange, the core advantage (cumulative beats last-5-turns) **vanished** (−0.9%p, indistinguishable from chance, McNemar p=1.000).
+
+The lesson: **"lowering false positives" and "catching crises better" turned out to be a trade-off** in this approach. Raising the decision threshold to push false positives down to 5% also dulled the ability to catch crises. Had we looked only at the development data we'd have called it a triumph — the new held-out set caught that illusion, which is exactly why you keep one. So we keep the validated original approach and leave this attempt on the record rather than deleting it. The full trail is in [`out/holdout_final.md`](out/holdout_final.md) and [`docs/DESIGN.md`](docs/DESIGN.md) D-11.
+
 ## One-line Conclusion
 
 In one detector (`target_aware`), the cumulative approach (STATEFUL) robustly beat the single-shot approach (stateless) — even after matching false-positive rates, even after resampling 2,000 times, even after changing the setting (McNemar p=0.000). But the control we put in to screen for circularity, `target_agnostic`, did not hold, so circularity cannot be entirely ruled out, and catching crises better raised the rate of wrongly flagging long normal conversations to 31%. This inherits Mycelium's `graph_weight=0.0` spirit: the numbers go down as they are, whether or not they flatter the project.
